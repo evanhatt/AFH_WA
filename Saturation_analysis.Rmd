@@ -1,0 +1,549 @@
+---
+title: "Clustering with Geolocation Saturation in the AFH Market"
+author: "<a href='https://alexander-kahanek.github.io' target='_blank'>Ellie Van Hattem Barasa</a> x <a href='' target='_blank'>Revival, co.</a>"
+date: "10/1/2024"
+mail: "ellievanhattembarasa@gmail.com"
+#linkedin: ""
+#twitter: ""
+github: "evanhatt"
+home: "https://github.com/evanhatt"
+logo: "images/combined_logo.png"
+output:
+  epuRate::epurate:
+    #css: style.css
+    toc: TRUE
+    number_sections: FALSE
+    code_folding: "hide"
+    #includes: 
+        #before_body: header.html
+---
+
+# Welcome
+
+The purpose of this analysis is to look at the clustering of current Adult Family Homes for future market potentional in Benton County.  
+This Analysis uses R vizualization and Python scripting together, utilizing the reticulate package. The data was filitered and cleaned using Python, [and the script to do so can be found as clean_script.py](https://github.com/Alexander-Kahanek/Rubbish_Clustering/blob/master/clean_script.R). A Python function was also created for the clustering algorithm, [which is located in euclidean_script.py](https://github.com/Alexander-Kahanek/Rubbish_Clustering/blob/master/euclidean_script.py). Both files can be found in my [GitHub Repository for this analysis.](https://github.com/Alexander-Kahanek/Rubbish_Clustering)
+
+
+Put disclaimer here. 
+
+## A little about who Revival AFH is
+
+Revival Adult Family Homes is a business that puts its residents first in every aspect with a huge goal: To provide an exceptional standard of care by treating residents like their own senior family members. They built a system of care that aims to elevate the standard of care and living through live-in care givers, organic and freshly prepared meals, and specialized attention to each resident. And they want to continue helping the golden year community with more rooms!  They are also currently in the development phase for an app that allows CNA's to talk and negotiate directly with in need Facilities. Be on the look out for their launch!
+
+## About AFH Market in WA
+
+Create a summary and small background on the reason for this analysis 
+
+
+```{r, warning=FALSE, message=FALSE}
+knitr::opts_chunk$set(warning=FALSE, message=FALSE)
+
+####### ALL LIBRARIES USED ###########
+###### DATA MANIPULATION ######
+options(stringsAsFactors = FALSE)
+Library(Pandas) # for main data manipulations 
+Library(Geopandas) # for spatial and geographic data
+Library(Matplotlib.pyplot) # for creating static, animated, and interactive visualizations
+source_python("euclidean_script.py") # python script
+
+###### GRAPHING ######
+#packages 
+Library(Pandas) # for main data manipulations  
+Library(Seaborn) # for colors in graphs
+Library(Folium) # For plot markers and geographic data
+Library(Contextily)  # For adding a basemap
+Library(Plotly.express) # Data binding, Axes labels, Colors, and Legends.
+
+######################################
+
+# titles
+latitude_col = 'Latitude'           # Replace with actual latitude column name
+longitude_col = 'Longitude'         # Replace with actual longitude column name
+location_county_col = 'Location county'  # Replace with actual county column name
+location_address_col = 'Location address'  # Column for addresses
+facility_type_col = 'Facility type'  # Column for facility type
+
+# Filter the dataset for Benton County and Facility type 'AF'
+benton_county_afh = raw[(raw[location_county_col] == 'Benton') & (raw[facility_type_col] == 'AF')]
+
+
+# Convert the dataframe into a GeoDataFrame
+gdf = gpd.GeoDataFrame(
+    benton_county_afh,
+    geometry=gpd.points_from_xy(benton_county_afh[longitude_col], benton_county_afh[latitude_col])
+)
+
+# Set the coordinate reference system to WGS84 (latitude/longitude)
+gdf.set_crs(epsg=4326, inplace=True)
+
+# Plot the Benton County AFHs on a map
+fig, ax = plt.subplots(figsize=(10, 10))
+
+# Plot the AFH locations
+gdf.plot(ax=ax, color='blue', marker='o', markersize=50, alpha=0.7, label='AFH Locations')
+
+# Add a basemap (OpenStreetMap tiles)
+ctx.add_basemap(ax, crs=gdf.crs.to_string(), source=ctx.providers.OpenStreetMap.Mapnik)
+
+# Customize the plot
+plt.title('Adult Family Home Locations in Benton County')
+plt.xlabel('Longitude')
+plt.ylabel('Latitude')
+
+# Show the plot
+plt.legend()
+plt.tight_layout()
+plt.show()
+```
+
+# How many homes are in Richland and Kennewick?
+
+Lets start with getting a baseline for the volume of litter collected on each of our four days.
+
+---
+title: "AFH Facility Count in ZIP Code 99352"
+author: "Your Name"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+# Load necessary libraries
+library(dplyr)
+library(knitr)
+
+# Assuming 'raw' is your dataset containing the AFH data
+
+# Filter the data for AFH facilities with ZIP code 99352 and Facility type 'AF'
+afh_zip_99352 <- raw %>%
+  filter(`Mail ZIP Code` == "99352", `Facility type` == "AF")
+
+# Count the number of AFH facilities in the 99352 ZIP code
+num_afh_zip_99352 <- nrow(afh_zip_99352)
+
+r num_afh_zip_99352
+```
+---
+title: "AFH Facility Count in ZIP Code 99337"
+author: "Your Name"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+# Load necessary libraries
+library(dplyr)
+library(knitr)
+
+# Assuming 'raw' is your dataset containing the AFH data
+
+# Filter the data for AFH facilities with ZIP code 99337 and Facility type 'AF'
+afh_zip_99337 <- raw %>%
+  filter(`Mail ZIP Code` == "99337", `Facility type` == "AF")
+
+# Count the number of AFH facilities in the 99337 ZIP code
+num_afh_zip_99337 <- nrow(afh_zip_99337)
+
+r num_afh_zip_99337
+```
+
+
+Provide Specific analysis conlcusion based on the data (explain it) 
+
+
+
+# What about Geolocation objects?
+
+Geolocation Objects are defined to be hierarchically grouped by County, Zipcode, and City. 
+For our clustering algorithm, we will filter for Benton County and use zipcodes 99352 for Richland and 99337 for Kennweick for difference assesments.
+
+
+From here, we will cycle through each tracked geolocation and discorver AFH density in each City in relation to each other, via straight line distance with an adjustment for longitude and latitude. Each AFH will then be considered part of their city or zipcode cluster.
+
+[This script was created in Python and saved as euclidean_script.py](https://github.com/evanhatt/AFH_WA/blob/master/euclidean_script.py), which can be found in my [GitHub repository for this analysis](https://github.com/evanhatt/AFH_WA). The Python script is being used directly in R as a callable function using the Reticulate package! We could have also created the function directly in the R Markdown file; however, it is much easier to just import it directly as a function. So lets cluster our AFHs!
+
+
+```{r}
+# clustering data points with python script
+clustered_data <- raw %>% 
+  subset(city == 'Redwood City') %>% # this is a different area
+  get_euclidean(collection, litter) # python function
+
+#########################
+import matplotlib.pyplot as plt
+
+# Filter the data for Benton County and Facility type 'AF'
+benton_afh = raw[(raw['Location county'] == 'Benton') & (raw['Facility type'] == 'AF')]
+
+# Group the data by 'Mail ZIP Code' and count the number of facilities in each ZIP code
+zip_counts = benton_afh.groupby('Mail ZIP Code').size().reset_index(name='AFH count')
+
+# Create a horizontal lollipop chart
+plt.figure(figsize=(10, 6))
+
+# Plot horizontal lines (the lollipop stick)
+plt.hlines(y=zip_counts['Mail ZIP Code'], xmin=0, xmax=zip_counts['AFH count'], color='blue', linewidth=2)
+
+# Plot circles (the lollipop head)
+plt.scatter(zip_counts['AFH count'], zip_counts['Mail ZIP Code'], color='red', s=100)
+
+# Add labels and title
+plt.ylabel('ZIP Code')
+plt.xlabel('Number of AFHs')
+plt.title('Number of AFHs in Benton County Grouped by ZIP Code')
+
+# Show the plot
+plt.tight_layout()
+plt.show()
+
+```
+ 
+
+## What do our clusters look like?
+
+After applying our clustering algorithm with a Python script, we find the following clusters.
+
+```{r}
+
+clustered_data %>% 
+  mutate(
+    closest_cent = paste(ifelse(cent_type == "trashCan", "Trash:",
+                                ifelse(cent_type == "recyclingCan", "Recyc", "Ash")),
+                         ifelse(closest_cent<10, paste("0",closest_cent, sep=""), closest_cent),
+                         sep= " ")
+  ) %>%
+  filter(cent_id == -1) %>% 
+ggplot(aes(x= long, y=lat, color= closest_cent)) + 
+  geom_point() + 
+  geom_point(data = clustered_data %>% 
+               filter(cent_id != -1),
+             aes(x= long, y=lat)
+             ,colour = "black"
+             ,size = 2.5
+             ) + 
+  theme(legend.position = "none") + 
+  labs(title= "Clustering groups of litter for the Rubbish Cleanup"
+       ,subtitle = "color corrosponds to the found clusters by collection objects (black)"
+       )
+
+```
+
+From the above scatter plot we see that the black dots corrospond to the collection objects. Our colored dots are the objects the Rubbish Team collected throughout all 4 days. The larger cluster of black dots are collection objects located inside the bathrooms in the building. This throws things off a bit, and in the future I would suggest Rubbish to distinguish which collection objects are located inside bathrooms, so that we can aggregate the results. However, since there is no inclination of which are inside or outside of the bathroom, they will all be treated as they are given.
+
+For the clusterings, we actually see pretty good groupings! Although it is clear the placements of the collection objects could be improved to better cover the areas defined. Unfortunately, without any idea of how full these collection objects were, there would not be anything fruitful gained from trying to find better locations for the collection objects. As it is unclear if clusters with a high volume of litter is due to high foot traffic, or if it is due to an overfilled collection object.
+
+
+## Did the Rubbish Team have an effect?
+
+To see if the Rubbish team had an effect on the clustering, we should look where they were focused for each hour. To do this, a streamgraph gives us the best representation. The overall length of each block gives us the total number of litter pieces picked up and tracked by the rubbish team!
+
+```{r, fig.cap="This graph represents the amount of litter collected per hour, for each collection object."}
+get_hour <- function(time){
+  # function used to save space
+  return (hour(as.POSIXct(time, format="%Y-%m-%d %H:%M:%S")))
+}
+
+# getting plot data for streamgraph
+plot_data <- clustered_data %>% 
+  subset(is_litter==1) %>% # only want objects
+  mutate( # getting hours of days, and making them concurrent
+    time = ifelse(day=="Sunday", get_hour(time),
+                  ifelse(day=="Monday", get_hour(time)+24,
+                         ifelse(day=="Tuesday", get_hour(time)+48,
+                                get_hour(time)+72))),
+    # make graph prettier
+    closest_cent = paste(ifelse(cent_type == "trashCan", "Trash ID:",
+                                ifelse(cent_type == "recyclingCan", "Recyc ID:", "Ash ID:")),
+                         ifelse(closest_cent<10, paste("0",closest_cent, sep=""), closest_cent),
+                         sep= " ")
+  ) %>% 
+  group_by(closest_cent, time) %>% 
+  summarise(
+    num_litter = n()
+    # ,day = day
+  ) %>% 
+  ungroup() %>% 
+  rbind(data.frame("closest_cent" = NA, "time" = c(1:100), "num_litter" = 0)) %>% 
+  group_by(closest_cent, time) %>% 
+  summarise(
+    num_litter = sum(num_litter)
+  ) %>% 
+  ungroup() %>% 
+  arrange(-time)
+ 
+# plotting Streamgraph
+plot_data %>%
+  streamgraph(
+    "closest_cent", "num_litter", "time"
+    ,interpolate="step", #offset = "zero",
+    scale = "continuous", width="800px", height="400px"
+            ) %>%
+  sg_legend(show=TRUE, label="Collection ID: ") %>%
+  sg_fill_manual(brewer.pal(9, "RdPu")) %>% # [c(3:9)]) %>%
+  sg_annotate("Collected Litter per Hour", "300px", "400px")
+  
+```
+
+Each seperation of color corrosponds to a different collection object. Colors are repeated as there are too many collection objects to create distinct colors. 
+
+From the above we can decipher when the Rubbish team was at the location in cleanup-mode in full force. We see drastic spikes in the volume of collected litter. This could mean that litter collection was not consistent across the whole event, meaning they cleaned in certain time segments instead of during the entire event. However, this could also mean there was generally less litter during the times of lower volumes. After talking to the Rubbish team, the reality is they did their cleaning after the event was coming to a close. My suggestion would be to focus on cleaning during the entire event, in order to lessen the bias on a time-scale. Due to this bias in collection times, any analysis on the litter produced over time would have a major bias and could easily misrepresent reality.
+
+Another point is we can see larger volumes of litter around certain collection objects during these timeblocks. This could be due to a larger build-up over litter around these areas, or it could be due to the Rubbish team lingering and favoring certain collection object locations. It is difficult to tell from this graph, so to find how the team collected their litter we can create a time map of all the litter they collected!
+
+## Viewing the collection over time
+
+To get an idea of how well the RUbbish team traversed the event space, we can look at the collection of litter one point at a time.
+
+
+```{r}
+
+dots <- clustered_data %>% 
+  filter(cent_id > -1)
+
+dots <- dots %>% 
+  rbind( dots %>% mutate(day="Sunday")) %>% 
+  rbind( dots %>% mutate(day="Monday")) %>% 
+  rbind( dots %>% mutate(day="Tuesday"))
+
+time_plot <- clustered_data %>%
+  mutate(
+    closest_cent = paste(ifelse(cent_type == "trashCan", "Trash:",
+                                ifelse(cent_type == "recyclingCan", "Recyc", "Ash")),
+                         ifelse(closest_cent<10, paste("0",closest_cent, sep=""), closest_cent),
+                         sep= " ")
+  ) %>%
+  mutate(
+    time = as_datetime(time)
+    ) %>%
+  arrange(time) %>%
+  mutate(
+    id = row_number()
+  ) %>%
+  filter(cent_id == -1) %>%
+ggplot() +
+  geom_point(data= dots
+             ,aes(x=long, y=lat)
+             ,color="black"
+             ,size = 1.5) +
+  geom_point(aes(x= long, y=lat, group=id, color= closest_cent)) +
+  theme(legend.position = "none") +
+  facet_wrap(~day, labeller = as_labeller(day_names)) +
+  labs(title = 'Timeseries of the Rubbish Litter Cleanup for Startup Grind 2020'
+       ,subtitle = "color corrosponds to the found clusters by collection objects (black)"
+       ) +
+  transition_reveal(id)
+
+anim_save("rubbish.time_collection.gif", time_plot)
+```
+
+![](rubbish.time_collection.gif)
+
+From the above gif we can see how rubbish well the Rubbish team moved around the area to collect the litter. If you look closesly, you can even tell how many people were picking up litter at the same time.
+
+It seems there is some lingering around some areas; however, this could have easily been due to a higher volume of litter in these areas. The Rubbish team also did not pick up any litter in the lower left area, yet collection objects were tagged there.
+
+## Well, how close was the litter to Collection Objects?
+
+One important feature is finding how close litter was, on average, to its closest collection point. This feature could point clues to how lazy humans are! If the average distance to the collection object is low, then that means people are pretty lazy. However, if the average distance is large, this could mean that a collection object was not close enough for the person to reasonably throw away their litter. Of course, we should all just hold onto our trash a little longer to actually throw it away.
+
+One important note is that this has an inherent bias. We, again, do not know how full these collection objects are. Meaning, people could have looked for a appropriate collection object; however, did not find any with enough room to throw away their trash. Or they might have even thrown their trash away, but because they were full the trash had fallen out of its collection object.
+
+
+```{r}
+# prepping data for heatmap plot
+plot_data <- clusters %>%
+  mutate(
+    closest_cent = paste(ifelse(cent_type == "trashCan", "Trash:",
+                                ifelse(cent_type == "recyclingCan", "Recy:", "Ash:")),
+                         ifelse(closest_cent<10, paste("0",closest_cent, sep=""), closest_cent),
+                         sep= " ")
+  ) %>% 
+  subset(select = c(day, closest_cent, mean_dist)) %>% 
+  dcast(closest_cent ~ day, value.var = "mean_dist") %>% 
+  mutate( # chaning na values to 0
+    Sunday = ifelse(is.na(Sunday),0,Sunday)
+    ,Monday = ifelse(is.na(Monday),0,Monday)
+    ,Tuesday = ifelse(is.na(Tuesday),0,Tuesday)
+    ,Wednesday = ifelse(is.na(Wednesday),0,Wednesday)
+  )
+
+# changing rownames to centroid id
+rownames(plot_data) <- plot_data[,"closest_cent"]
+
+# making dataframe into matrix
+plot_data <- plot_data %>% 
+  subset(select = -c(closest_cent)) %>% 
+  as.matrix()
+
+# colors for graph
+colors <- brewer.pal(9, "RdPu")[c(1, 6:9)]
+colors[1] <- "#ffffff"
+
+# row clustering order
+row_order <- plot_data %>% 
+  dist(method = "euclidean") %>% 
+  hclust(method = "complete") %>% 
+  as.dendrogram() %>% 
+  rev()
+
+
+# plotting heatmap
+plot_data %>% 
+  heatmaply(
+          plot_method = "plotly"
+          ,colors = colorRampPalette(colors)
+          ,dendogram = "both"
+          ,show_dendrogram = c(FALSE, FALSE)
+          ,label_names = c("Day", "Collection ID", "Mean Distance")
+          ,grid_color = "white"
+          ,main = "Mean Distance of Litter from the (Trash / Recyclying / Ash) Can"
+          #ylab = "Collection Objects (ID)",
+          ,xlab = "A distance of 0 means there are no objects around the Collection Object."
+          ,key.title = "meters"
+          ,showticklabels = c(TRUE, TRUE)
+          ,column_text_angle = 0
+          ,colorbar_len = .8
+          ,grid_gap = 1
+          ,Rowv = row_order
+          ,Colv = clustered_data$day %>% unique()
+          # ,cellnote = plot_data
+          ) %>% 
+  layout(width=800)
+```
+
+Summarize with data insights 
+
+```{r}
+# prepping data for heatmap plot
+
+# plotting heatmap
+
+```
+
+Data anaylsis and summary 
+
+
+## Is there a connection between between the availiable beds and the current medicad seniors pending facility placement?
+
+To get an idea, ........
+
+```{r}
+# prepping data for heatmap plot
+
+```
+
+From this, we initially see no correlations. summerize and continue with this. 
+```{r}
+
+}
+
+
+```
+
+Here we can see the correlation values for each day. Again, nothing convincing, continue summerizing
+## Searchable data table of clusters
+
+Here is a searchable data table to view the clusteringss yourself, along with some basic statistics for each!
+
+```{r}
+
+```
+
+In total we have 42 collection objects. The average distance of the litter to the nearest collection object is on average 12.28 meters. From this we can assume that the average person drops their trash on the ground if they are a measly 12 meters away from the closest trash can. That is about 40 feet for us American folks. This means that event venues should place their trash collection objects in 40 foot intervals to maximize their effectiveness.
+
+# What does this all mean? 
+
+In summary, 
+
+
+## My recomendations for next location for an AFH for Revival Homes 
+
+
+Finally, 
+
+
+## A fun Sunburst graph!
+
+Finally, I will leave you with this fun sunburst graph to play with. You can hover over each section to further subset........ Have fun!
+```{r}
+# getting data for sunburst plot
+sunburst <- clustered_data %>% 
+  
+sunburst
+```
+
+-------------------------
+
+-------------------------
+
+-------------------------
+
+-------------------------
+
+-------------------------
+
+Below are the code chunks for the makings and simple statistics used throughout this analysis. They are shoved to the bottom, so not to muddy up the written portion.
+
+
+## The head of the raw data
+
+
+```{r}
+raw %>% head()
+```
+
+
+##  Total number of AFH in Benton County
+
+
+```{r}
+
+
+###############
+# 
+nDistance %>% nrow()
+```
+
+
+## 
+
+```{r}
+###############
+# 
+
+```
+
+
+##
+
+```{r}
+############
+# 
+```
+
+
+## 
+
+
+```{r}
+
+```
+
+
+
+## 
+
+
+```{r}
+
+# 
+
+
+
+
+# 
+
+# 
+
+
+```
