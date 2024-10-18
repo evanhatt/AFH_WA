@@ -1,6 +1,6 @@
 ---
 title: "Clustering with Geolocation Saturation in the AFH Market"
-author: "<a href='https://alexander-kahanek.github.io' target='_blank'>Ellie Van Hattem Barasa</a> x <a href='' target='_blank'>Revival, co.</a>"
+author: "<a href='https://evanhatt.github.io' target='_blank'>Ellie Van Hattem Barasa</a> x <a href='' target='_blank'>Revival, co.</a>"
 date: "10/1/2024"
 mail: "ellievanhattembarasa@gmail.com"
 #linkedin: ""
@@ -126,7 +126,7 @@ r num_afh_zip_99352
 ```
 ---
 title: "AFH Facility Count in ZIP Code 99337"
-author: "Your Name"
+author: "Ellie Barasa"
 date: "`r Sys.Date()`"
 output: html_document
 ---
